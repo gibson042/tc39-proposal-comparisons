@@ -1,14 +1,16 @@
 # Proposal: Comparisons
 
 Champions:
-
-* @JakobJingleheimer
-* @gibson042
+* Jacob Smith ([@JakobJingleheimer](https://github.com/JakobJingleheimer))
+* Richard Gibson ([@gibson042](https://github.com/gibson042))
 
 Authors:
+* Jacob Smith ([@JakobJingleheimer](https://github.com/JakobJingleheimer))
+* Ruben Bridgewater ([@BridgeAR](https://github.com/BridgeAR))
 
-* @JakobJingleheimer
-* @bridgeAR
+Reviewers:
+* Jordan Harband ([@ljharb](https://github.com/ljharb))
+* Olivier Flückiger ([@o-](https://github.com/o-))
 
 ## [Stage](https://tc39.github.io/process-document/)
 
@@ -16,13 +18,11 @@ Authors:
 
 **Requesting**: 1
 
-## The Problem(s)
+## The Problem
 
-This proposal may eventually split into 2 different topics:
+Determine how A and B deviate—a very common need that is currently ~quarter-solved (primitives but not non-primitives). This issue has 2 parts: (deep) equality and details.
 
-### A vs B
-
-Determining whether B is sufficiently similar (or different) to A.
+### Equality (currently)
 
 Non-objects are straightforward and trivial:
 
@@ -49,14 +49,7 @@ const b = new String('foo');
 
 There is some variation in the ecosystem regarding the nuances of comparing objects.
 
-This may be addressed by the [Pattern Matching proposal](https://github.com/tc39/proposal-pattern-matching).
-
-### Output
-
-Even more important than A vs B is the output: Merely knowing A is unexpected is almost useless when you can't see what A and B are.
-
-<details>
-<summary>examples</summary>
+Even more important than A vs B is the details: Merely knowing B is unexpected is almost useless without knowing specifically _how_ they differ.
 
 Annoying:
 ```js
@@ -75,65 +68,492 @@ But brittle
 if (A !== B) throw new Error(`${A} does not equal ${B}`);
 // Error: [object Object] does not equal [object Object]
 ```
-</details>
 
-There is potentially also an issue of representing multiple problems (such as is possible via Pattern Matching).
+## Use-cases
 
-## Ecosystem today
+### Production: Delta for HTTP `PATCH`
 
+Many client-side apps manipulate data, sometimes very large data. That could be via a `<form>`, a text editor, or something else. Since the before and after are known, only the delta is needed (sent via [http `patch`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods/PATCH)).
 
-The vast majority of ECMAScript engineers use one of 2 forms: `assert` and `expect`. These come from one of ~4 libraries: [`chai`](https://www.npmjs.com/package/chai) (`20M` weekly), [`jasmine`](https://www.npmjs.com/package/jasmine) (`1.4M` weekly), [`expect`](https://jestjs.io/docs/expect) (`36M` weekly), `node:assert` (indeterminable). These are direct competitors, so we can assume there is no overlap and the numbers are summable: at least `~93.4M` weekly (probably significantly higher when `node:assert` numbers are added).
+```jsx
+<Form onSubmit={submitPatch}>
 
-### Expect style:
+function submitPatch(prev, next) {
+  const patch = composeDelta(prev, next);
 
-* [`expect`](https://jestjs.io/docs/expect)
-* [`jasmine`](https://jasmine.github.io/api/edge/global.html#expect)
-* [`@std/expect`](https://jsr.io/@std/expect) by [deno](https://deno.land/)
-* [`bun:test`](https://bun.sh/reference/bun/test/expect) by [bun](https://bun.sh/), **warning**: we only reference `expect` part not the entire `bun:test` API.
-
-### Assert style:
-
-* [`node:assert`](https://nodejs.org/api/assert.html)
-* [`chai`](https://www.chaijs.com/api/assert/)
-* [`@std/assert`](https://jsr.io/@std/assert) by [deno](https://deno.land/)
-
-### Usage outside of test suites
-
-It is not uncommon to include assertions within code as a means of input checking (especially input coming from an end-user):
-
-```js
-function sum(limit, ...inputs) {
-  let total = 0;
-  for (const { valueAsNumber: val } of inputs) total += val;
-
-  assert.ok(total <= limit);
-
-  return total;
+  fetch(…, {
+    body: JSON.stringify(patch),
+    method: 'PATCH',
+  });
 }
-
-const expenses = sum(budget, ...form.elements.expenses);
 ```
 
-These are then caught and surfaced to the user in a human-friendly message (such as via a "toast").
+### Production: Logging
 
-### TDLR
+```js
+log('bad data', compare(initiallyGood, nowBad));
+```
 
-The functionality is **widely** used throughout the ecosystem with almost no variation. Users largely do not care about one verses the other—they care about:
+### Production: State management
 
-* "behaves as expected"
-* convenience
-* how much they have to look up
+Such as in React, is often based on derived data that could actually result in no change:
 
-The first depends on getting it right. We fortunately have decades of experience from the ecosystem to build upon.
+```js
+setState((prev) => ({
+  ...prev,
+  x: x / 2,
+}));
+```
 
-The second two are addressed by nature of native inclusion:
+This is currently left up to the user to guard against because it's too difficult and expensive to for the library to check.
 
-* convenience: it's right there (can't get more convenient).
-* how much to look up: when everyone is regularly using the same thing, it's top-of-mind so there's no lookup.
+React tried to get this before (see [Prior Art → Shallow Equal]).
 
-Will it be difficult: very.
+### Production: Validation
 
-Is it worth doing: yes.
+Input from an uncontrolled origin:
+
+```js
+try {
+  assert.is(
+    total += value,
+    NaN,
+  );
+} catch (err) {
+  toast(…);
+}
+```
+
+### Production: Virtual DOM
+
+```jsx
+{items.map(({ id, label }) => (
+  <button onClick={() => remove(id)}>
+    {label}
+  </button>
+))}
+```
+
+### Testing
+
+```js
+assert.equal(
+  { foo: 1         },
+  { foo: 1, bar: 2 },
+);
+```
+
+## Explicitly out of scope
+
+* This is not a test runner (`describe`, `it`, etc).
+* This is not a test utility suite (`mock`, `stub`, etc).
+
+## Solution (sketches)
+
+### Compare
+
+A function to deeply compare values.
+
+```ts
+function compare(
+  expected: any,
+  actual: any,
+  options: CompareOptions,
+): (true | Iterator<Deviation>) | undefined;
+```
+
+### CompareOptions
+
+```ts
+type CompareOptions = {
+  mode?:
+    | 'fast' // (default) return => boolean
+    | 'full' // return => Iterator<Deviation>
+  ,
+  reasons?: Partial<{
+    constructor: boolean,     // default: `false`
+    descriptors: boolean,     // default: `false`
+    promise: 'ref' | 'value', // default: `'value'`
+    prototype: boolean,       // default: `false`
+    weak: 'ref' | 'value',    // default: `'value'`
+  }>,
+};
+```
+
+<dl>
+  <dt><em>mode</em></dt>
+  <dd>How the comparison reports the result</dd>
+
+  <dt><em>mode</em> <strong title="default value"><code>fast</code></strong><dt>
+  <dd>Return <code>true</code> when deviation(s) exist or <code>undefined</code> when no deviation exist.</dd>
+
+  <dt><em>mode</em> <code>full</code><dt>
+  <dd>Return an <code>Iterator</code> of <code>Deviations</code> with all deviations, or <code>undefined</code> when no deviation exist.</dd>
+
+  <dt><em>reasons</em></dt>
+  <dd>Whether/how to handle more esoteric cases when determining differences.</dd>
+
+  <dt><em>reasons.constructor</em> <strong title="default value"><code>false</code></strong> | <code>true</code></dt>
+  <dd>Whether to consider constructor. This affects, amongst others, Box Primitives (<code>new Boolean(true)</code> vs <code>true</code>) and <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypedArray">TypedArrays</a> (<code>new Int8Array([1,2])</code> vs <code>new Uint8Array([1,2])</code>) where differenes are pedantic.</dd>
+
+  <dt><em>reasons.descriptors</em> <strong title="default value"><code>false</code></strong> | <code>true</code></dt>
+  <dd>Whether to consider property non-enumerability descriptors (configurable, getter vs value, writeable).</dd>
+
+  <dt><em>reasons.promise</em> <strong title="default value"><code>'ref'</code></strong> | <code>'value'</code></dt>
+  <dd>How to determine equality of promises.</dd>
+
+  <dt><em>reasons.prototype</em> <strong title="default value"><code>false</code></strong> | <code>true</code></dt>
+  <dd>Whether to consider prototype.</dd>
+
+  <dt><em>reasons.weak</em> <strong title="default value"><code>'ref'</code></strong> | <code>'value'</code></dt>
+  <dd>How to determine equality of Weak objects (<a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap"><code>WeakMap</code></a>, <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakRef"><code>WeakRef</code></a>, <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakSet"><code>WeakSet</code></a>).</dd>
+</dl>
+
+### Deviations
+
+```ts
+type Deviations = Iterator<
+  string, // "foo['bar-qux']['zed']"
+  {
+    actual:
+      | bigint
+      | boolean
+      | null
+      | number
+      | string
+      | symbol
+      | undefined
+    ,
+    expected:
+      | bigint
+      | boolean
+      | null
+      | number
+      | string
+      | symbol
+      | undefined
+    ,
+    reason: {
+      constructor?: boolean,
+      descriptor?: boolean,
+      enumerability: boolean,
+      equality: boolean,
+      missing: boolean,
+      prototype?: boolean,
+      reference: boolean,
+      type: boolean,
+    },
+  },
+>;
+```
+
+<dl>
+  <dt><em>key</em></dt>
+  <dd>A <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Working_with_objects#accessing_properties">bracket-notation</a> path like <code>"foo['bar-qux']['zed']"</code>. When comparing non-objects, (eg strings), the path is an empty string <code>""</code>.</dd>
+
+  <dt><em>actual</em></dt>
+  <dd>The leaf value from the <strong>second</strong> argument.</dd>
+
+  <dt><em>expected</em></dt>
+  <dd>The leaf value from the <strong>first</strong> argument.</dd>
+
+  <dt><em>reason</em></dt>
+  <dd>
+  The reason(s) comparison failed to match.
+
+    {
+      expected: undefined,
+      actual: undefined,
+      reason: { missing: true, … },
+    }
+
+  Reason(s) are general to specific, outter-most to inner-most: `compare(true, new Date())` → "type" is the reason for the deviation. Specific order is engine-defined.
+  </dd>
+</dl>
+
+### Equality
+
+Leafs are compared with [SameValueZero](https://tc39.es/ecma262/multipage/abstract-operations.html#sec-samevaluezero).
+
+* TypedArrays containing the _same values in the same sequence_ are equal, except when `CompareOptions.reasons.constructor` is enable.
+* A box primitive (eg `new Boolean(true)`) equals its primitive (eg `true`), except when `CompareOptions.reasons.constructor` is enable.
+* `NaN` equals `NaN` (for performance and sanity).
+* Zero (`0`, `-0`, `+0`) equals zero (for now? possibly an option in `CompareOptions` in future).
+
+Custom types are handled by HostTypes (to avoid custom comparison).
+
+### Examples
+
+#### Fast mode: equal
+
+```js
+compare('a', 'a');
+
+undefined
+```
+
+#### Fast mode: unequal
+
+```js
+compare('a', 'b');
+
+true
+```
+
+#### Full mode: unequal
+```js
+compare('a', 'b', { mode: 'full' });
+
+Iterator => Iterable(1) {
+  "" => {
+    expected: 'a',
+    actual: 'b',
+    reason: { equality: true, … },
+  },
+}
+```
+
+#### Fast mode: object descriptor vs literal
+
+```js
+compare(
+  Object.create({}, { foo: { enumerable: true, value: 'a' } }),
+  { foo: 'a' },
+);
+
+undefined
+```
+
+```js
+compare(
+  Object.create({}, { foo: { enumerable: true, value: 'a' } }),
+  { foo: 'a' },
+  { reasons: { descriptor: true } },
+);
+
+true
+```
+
+```js
+compare(
+  Object.create({}, { foo: { enumerable: true, get: () => 'a' } }),
+  { foo: 'a' },
+);
+
+undefined
+```
+
+```js
+compare(
+  Object.create({}, { foo: { enumerable: true, get: () => 'a' } }),
+  { foo: 'a' },
+  { reasons: { descriptor: true } },
+);
+
+true
+```
+
+#### Full mode: type unequal
+
+```js
+compare('1', 1, { mode: 'full' });
+
+Iterator => Iterable(1) {
+  "" => {
+    expected: '1',
+    actual: 1,
+    reason: { type: true, … },
+  },
+}
+```
+
+#### Full mode: non-enumerable value
+
+```js
+compare(
+  Object.create({}, { foo: { enumerable: false, value: 'a' } }),
+  { foo: 'a' },
+  { mode: 'full' },
+);
+
+Iterator => Iterable(1) {
+  "foo" => {
+    expected: undefined,
+    actual: 'a',
+    reason: { enumerability: true, … },
+  },
+}
+```
+
+#### Full mode: non-enumerable getter
+
+```js
+compare(
+  Object.create({}, { foo: { get: () => 'a' } }),
+  { foo: 'a' },
+  {
+    mode: 'first',
+  },
+);
+
+Iterator => Iterable(1) {
+  "foo" => {
+    expected: undefined,
+    actual: 'a',
+    reason: { enumerability: true, … },
+  },
+}
+```
+
+#### Full mode: multiple leafs unequal, plus red-herring from type-mismatch
+
+```js
+compare(
+  { foo: 'a', bar: 'c' },
+  { foo: 'b', bar:  2  },
+  {
+    mode: 'full',
+  },
+);
+
+Iterator => Iterable(2) {
+  "foo" => {
+    expected: 'a',
+    actual: 'c',
+    reason: { equality: true, … },
+  },
+  "bar" => {
+    expected: 'c',
+    actual: 2,
+    reason: { equality: true, … },
+  },
+}
+```
+
+#### Full mode: multiple leafs unequal and missing
+
+```js
+compare(
+  { foo: { bar: 'a'           } },
+  { foo: { bar: 'b', qux: 'c' } },
+  { mode: 'full' },
+);
+
+Iterator => Iterable(2) {
+  "foo['bar']" => {
+    expected: 'a',
+    actual: 'b',
+    reason: { equality: true, … },
+  },
+  "foo['bar']['qux']" => {
+    expected: undefined,
+    actual: 'c',
+    reason: { missing: true, … },
+  },
+}
+```
+
+#### Full mode: multiple leafs unequal and prototype
+```js
+compare(
+  { foo: 'a', __proto__: null },
+  { foo: 'b' },
+  {
+    mode: 'full',
+    reasons: { prototype: true },
+  },
+);
+
+Iterator => Iterable(2) {
+  "[[Prototype]]" => {
+    expected: null,
+    actual: Object,
+    reason: { prototype: true, … },
+  },
+  "foo" => {
+    expected: 'a',
+    actual: 'b',
+    reason: { equality: true, … },
+  },
+}
+```
+
+#### Full mode: multiple array items unequal and missing
+```js
+compare(
+  ['a', 'b', 'c'     ],
+  ['a', 'b', 'd', 'e'],
+  {
+    mode: 'full',
+  },
+);
+
+Iterator => Iterable(1) {
+  "2" => {
+    expected: 'c',
+    actual: 'd',
+    reason: { equality: true, … },
+  },
+  "3" => {
+    expected: undefined,
+    actual: 'e',
+    reason: { missing: true, … },
+  },
+}
+```
+
+## Terminology
+
+Reference sample:
+```js
+{
+  foo: {
+    bar: 'a',
+    qux: {
+      zed: 1,
+    },
+  },
+}
+```
+
+<dl>
+  <dt><em>Branch</em></td>
+  <dd>A path from root to tip (inclusive of leaf). <code>foo.bar</code> and <code>foo.qux.zed</code> in the reference sample are branches.</dd>
+
+  <dt><em>Leaf(s)</em></dt>
+  <dd>The end of a branch. <code>bar</code> and <code>zed</code> in the reference sample are leafs because their values do not continue the branch.</dd>
+
+  <dt><em>Value</em></td>
+  <dd>The value of a leaf. <code>'a'</code> and <code>1</code> in the reference sample are values.</dd>
+</dl>
+
+## Sibling proposals
+
+The current proposal is useful on its own and sets a foundation for the following to be addressed subsequently.
+
+The current proposal does not include features likely to attract customisation, so punting these delays the need to determine how customisation will be facilitated.
+
+* [Inspector](https://github.com/tc39/proposal-inspector)
+* [Modes](https://github.com/JakobJingleheimer/proposal-modes)
+
+## Other related proposals
+
+* [Pattern Matching](https://github.com/tc39/proposal-pattern-matching)
+
+## Prior art
+
+### Assertions and expectations
+
+The vast majority of ECMAScript engineers use one of 2 forms: `assert` and `expect`. These come from one of ~4 libraries: `chai` (`20M` weekly), `jasmine` (`1.4M` weekly), `jest` (`29M` weekly), `node:assert` (indeterminable). These are direct competitors, so we can assume there is no overlap and the numbers are summable: at least `~51M` weekly (probably significantly higher when `node:assert` numbers are added).
+
+#### Assert
+
+* `node:assert` and `chai`'s TDD set have large overlap.
+
+#### Expect
+
+* `jasmine` and `jest` are (nearly?) identical with dedicated methods: `expect(a).toEqual(b)`
+* `chai`'s BDD set is a chain-style that builds upon itself: `expect(a).to.equal(b)`
 
 ### Neighbours
 
@@ -145,16 +565,8 @@ Many major languages natively include a form of assertion. To name a relevant fe
 * [`python`](https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement)
 * [`rust`](https://doc.rust-lang.org/std/macro.assert.html)
 
-## Explicitly out of scope
+### Proposals
 
-* This is not a test runner (eg: `describe`, `it`, etc).
-* This is not a test utility suite (eg: `mock`, `stub`, etc).
-
-## Prior to stage 2
-
-* Investigate (and potentially decide on) `assert` vs `expect` (preliminary investigation suggests `assert`).
-  * Possibly an amalgamation of Pattern Matching.
-* Consider extensibility (public symbols?)
-  * Additional/replacement comparison algorithms
-  * Additional/replacement output handlers
-* Decide on a narrow initial scope (surface-area is enormous: assertions/expectations plus output).
+* [Array equality](https://github.com/tc39/proposal-array-equality)
+* [Object deep equal](https://github.com/misha98857/proposal-object-deep-equal)
+* [Object shallow equal](https://github.com/sebmarkbage/ecmascript-shallow-equal)
