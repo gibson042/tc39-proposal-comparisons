@@ -212,44 +212,22 @@ type CompareOptions = {
 ### Deviations
 
 ```ts
-type Deviations = Iterator<
-  string, // "foo['bar-qux']['zed']"
-  {
-    actual:
-      | bigint
-      | boolean
-      | null
-      | number
-      | string
-      | symbol
-      | undefined
-    ,
-    expected:
-      | bigint
-      | boolean
-      | null
-      | number
-      | string
-      | symbol
-      | undefined
-    ,
-    reason: {
-      constructor?: boolean,
-      descriptor?: boolean,
-      enumerability: boolean,
-      equality: boolean,
-      missing: boolean,
-      prototype?: boolean,
-      reference: boolean,
-      type: boolean,
-    },
-  },
->;
+type Deviations = IterableIterator<{
+  path: Array<string | symbol | { special: "descriptor" | "prototype" }>,
+  actual: unknown,
+  expected: unknown,
+  disposition: "extra" | "missing" | "normal",
+}>;
 ```
 
 <dl>
-  <dt><em>key</em></dt>
-  <dd>A <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Working_with_objects#accessing_properties">bracket-notation</a> path like <code>"foo['bar-qux']['zed']"</code>. When comparing non-objects, (eg strings), the path is an empty string <code>""</code>.</dd>
+  <dt><em>path</em></dt>
+  <dd>
+    An array of segments necessary to reach the <code>actual</code> and <code>expected</code> nodes from their respective root.
+    The path for a root itself is an empty array.
+    The path to a property descriptor extends the path of its property by a <code>{ special: "descriptor" }</code> object,
+    and the path to a [[Prototype]] extends the path of its node by a <code>{ special: "prototype" }</code> object (both distinct from any property key).
+  </dd>
 
   <dt><em>actual</em></dt>
   <dd>The leaf value from the <strong>second</strong> argument.</dd>
@@ -257,18 +235,15 @@ type Deviations = Iterator<
   <dt><em>expected</em></dt>
   <dd>The leaf value from the <strong>first</strong> argument.</dd>
 
-  <dt><em>reason</em></dt>
-  <dd>
-  The reason(s) comparison failed to match.
-
-    {
-      expected: undefined,
-      actual: undefined,
-      reason: { missing: true, … },
-    }
-
-  Reason(s) are general to specific, outter-most to inner-most: `compare(true, new Date())` → "type" is the reason for the deviation. Specific order is engine-defined.
-  </dd>
+  <dt><em>disposition</em></dt>
+  <dd><dl>
+    <dt>"extra"</dt>
+    <dd>when the node is present under <code>actual</code> but not <code>expected</code></dd>
+    <dt>"missing"</dt>
+    <dd>when the node is present under <code>expected</code> but not <code>actual</code></dd>
+    <dt>"normal"</dt>
+    <dd>when the node is present under both <code>actual</code> and <code>expected</code></dd>
+  </dl></dd>
 </dl>
 
 ### Equality
@@ -304,11 +279,12 @@ true
 ```js
 compare('a', 'b', { mode: 'full' });
 
-Iterator => Iterable(1) {
-  "" => {
+Iterator => IterableIterator(1) {
+  {
+    path: [],
     expected: 'a',
     actual: 'b',
-    reason: { equality: true, … },
+    disposition: 'normal',
   },
 }
 ```
@@ -358,11 +334,12 @@ true
 ```js
 compare('1', 1, { mode: 'full' });
 
-Iterator => Iterable(1) {
-  "" => {
+Iterator => IterableIterator(1) {
+  {
+    path: [],
     expected: '1',
     actual: 1,
-    reason: { type: true, … },
+    disposition: 'normal',
   },
 }
 ```
@@ -376,11 +353,12 @@ compare(
   { mode: 'full' },
 );
 
-Iterator => Iterable(1) {
-  "foo" => {
+Iterator => IterableIterator(1) {
+  {
+    path: ['foo'],
     expected: undefined,
     actual: 'a',
-    reason: { enumerability: true, … },
+    disposition: 'extra',
   },
 }
 ```
@@ -396,16 +374,17 @@ compare(
   },
 );
 
-Iterator => Iterable(1) {
-  "foo" => {
+Iterator => IterableIterator(1) {
+  {
+    path: ['foo'],
     expected: undefined,
     actual: 'a',
-    reason: { enumerability: true, … },
+    disposition: 'extra',
   },
 }
 ```
 
-#### Full mode: multiple leafs unequal, plus red-herring from type-mismatch
+#### Full mode: multiple leafs unequal
 
 ```js
 compare(
@@ -416,16 +395,18 @@ compare(
   },
 );
 
-Iterator => Iterable(2) {
-  "foo" => {
+Iterator => IterableIterator(2) {
+  {
+    path: ['foo'],
     expected: 'a',
     actual: 'c',
-    reason: { equality: true, … },
+    disposition: 'normal',
   },
-  "bar" => {
+  {
+    path: ['bar'],
     expected: 'c',
     actual: 2,
-    reason: { equality: true, … },
+    disposition: 'normal',
   },
 }
 ```
@@ -439,16 +420,18 @@ compare(
   { mode: 'full' },
 );
 
-Iterator => Iterable(2) {
-  "foo['bar']" => {
+Iterator => IterableIterator(2) {
+  {
+    path: ['foo', 'bar'],
     expected: 'a',
     actual: 'b',
-    reason: { equality: true, … },
+    disposition: 'normal',
   },
-  "foo['bar']['qux']" => {
+  {
+    path: ['foo', 'qux'],
     expected: undefined,
     actual: 'c',
-    reason: { missing: true, … },
+    disposition: 'extra',
   },
 }
 ```
@@ -464,16 +447,18 @@ compare(
   },
 );
 
-Iterator => Iterable(2) {
-  "[[Prototype]]" => {
+Iterator => IterableIterator(2) {
+  {
+    path: [{ special: 'prototype' }],
     expected: null,
-    actual: Object,
-    reason: { prototype: true, … },
+    actual: Object.prototype,
+    disposition: 'normal',
   },
-  "foo" => {
+  {
+    path: ['foo'],
     expected: 'a',
     actual: 'b',
-    reason: { equality: true, … },
+    disposition: 'normal',
   },
 }
 ```
@@ -488,16 +473,18 @@ compare(
   },
 );
 
-Iterator => Iterable(1) {
-  "2" => {
+Iterator => IterableIterator(2) {
+  {
+    path: ['2'],
     expected: 'c',
     actual: 'd',
-    reason: { equality: true, … },
+    disposition: 'normal',
   },
-  "3" => {
+  {
+    path: ['3'],
     expected: undefined,
     actual: 'e',
-    reason: { missing: true, … },
+    disposition: 'extra',
   },
 }
 ```
