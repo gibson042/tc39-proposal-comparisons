@@ -166,48 +166,62 @@ function compare(
 
 ```ts
 type CompareOptions = {
-  mode?:
-    | 'fast' // (default) return => boolean
+  iterate?:
+    | 'none' // (default) return => boolean
     | 'full' // return => Iterator<Deviation>
   ,
-  reasons?: Partial<{
-    constructor: boolean,     // default: `false`
-    descriptors: boolean,     // default: `false`
-    promise: 'ref' | 'value', // default: `'value'`
-    prototype: boolean,       // default: `false`
-    weak: 'ref' | 'value',    // default: `'value'`
-  }>,
+  mode?:
+    | 'value'                // (default) limit to the values of enumerable properties
+    | 'descriptor'           // descend from an object to all of its property
+                             // descriptors rather than its enumerable property values
+    | 'descriptor-and-value' // like 'descriptor', but also invoke each getter into a value
+                             // associated with the node's path (i.e., as a sibling to the
+                             // descriptor path)
+  ,
+  prototypes?:
+    | 'same-value' // (default) compare the [[Prototype]]s of non-primitive values by SameValue
+    | 'ignore'     // ignore [[Prototype]]
+    | 'recurse'    // structurally compare the [[Prototype]]s of non-primitive values
 };
 ```
 
 <dl>
+  <dt><em>iterate</em></dt>
+  <dd>What the function returns<dl>
+    <dt>"none"</dt>
+    <dd>Return <code>true</code> when there is at least one deviation; <code>undefined</code> otherwise.</dd>
+    <dt>"full"</dt>
+    <dd>Return an iterable iterator of Deviations when there is at least one deviation; <code>undefined</code> otherwise.</dd>
+  </dl></dd>
+
   <dt><em>mode</em></dt>
-  <dd>How the comparison reports the result</dd>
+  <dd>What the function returns<dl>
+    <dt>"value"</dt>
+    <dd>Define the children of each non-leaf value as the values of its enumerable own properties.</dd>
+    <dt>"descriptor"</dt>
+    <dd>Define the children of each non-leaf value as the its property descriptors, regardless of enumerability.</dd>
+    <dt>"descriptor-and-value"</dt>
+    <dd>Define the children of each non-leaf value as the its property descriptors, regardless of enumerability, and additionally populate a <code>value</code> property by invoking each <code>get</code> accessor function.</dd>
+  </dl></dd>
 
-  <dt><em>mode</em> <strong title="default value"><code>fast</code></strong><dt>
-  <dd>Return <code>true</code> when deviation(s) exist or <code>undefined</code> when no deviation exist.</dd>
-
-  <dt><em>mode</em> <code>full</code><dt>
-  <dd>Return an <code>Iterator</code> of <code>Deviations</code> with all deviations, or <code>undefined</code> when no deviation exist.</dd>
-
-  <dt><em>reasons</em></dt>
-  <dd>Whether/how to handle more esoteric cases when determining differences.</dd>
-
-  <dt><em>reasons.constructor</em> <strong title="default value"><code>false</code></strong> | <code>true</code></dt>
-  <dd>Whether to consider constructor. This affects, amongst others, Box Primitives (<code>new Boolean(true)</code> vs <code>true</code>) and <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypedArray">TypedArrays</a> (<code>new Int8Array([1,2])</code> vs <code>new Uint8Array([1,2])</code>) where differenes are pedantic.</dd>
-
-  <dt><em>reasons.descriptors</em> <strong title="default value"><code>false</code></strong> | <code>true</code></dt>
-  <dd>Whether to consider property non-enumerability descriptors (configurable, getter vs value, writeable).</dd>
-
-  <dt><em>reasons.promise</em> <strong title="default value"><code>'ref'</code></strong> | <code>'value'</code></dt>
-  <dd>How to determine equality of promises.</dd>
-
-  <dt><em>reasons.prototype</em> <strong title="default value"><code>false</code></strong> | <code>true</code></dt>
-  <dd>Whether to consider prototype.</dd>
-
-  <dt><em>reasons.weak</em> <strong title="default value"><code>'ref'</code></strong> | <code>'value'</code></dt>
-  <dd>How to determine equality of Weak objects (<a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap"><code>WeakMap</code></a>, <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakRef"><code>WeakRef</code></a>, <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakSet"><code>WeakSet</code></a>).</dd>
+  <dt><em>prototypes</em></dt>
+  <dd>What to do with the [[Prototype]] of each non-leaf value<dl>
+    <dt>"same-value"</dt>
+    <dd>Treat [[Prototype]] as a leaf, comparing by SameValue.</dd>
+    <dt>"ignore"</dt>
+    <dd>Ignore [[Prototype]].</dd>
+    <dt>"recurse"</dt>
+    <dd>Treat [[Prototype]] as a child node and recurse as with any other.</dd>
+  </dl></dd>
 </dl>
+
+CompareOptions might also be extended to support more esoteric or particularly common configuration:
+* Treat `-0` as equal to `0` (SameValueZero).
+* Require the enumerated order of keys to match.
+* Provide a classifier to mark nodes for leaf comparison (i.e., SameValue), ignoring, or [surrogate] recursion.
+  * This is expected to be relevant for nodes whose value is a function or otherwise contains hidden state (ArrayBuffer, Promise, Map, Set, WeakMap, WeakSet, FinalizationRegistry, WeakRef, etc.).
+* Treat the `constructor` of a non-primitive value as a child for either leaf comparison or recursion, even when ignoring [[Prototype]]
+  * This is expected to be relevant for cross-realm objects, and also for TypedArray instances whose elements have values in the intersection of differing types.
 
 ### Deviations
 
@@ -248,10 +262,12 @@ type Deviations = IterableIterator<{
 
 ### Equality
 
+Non-enumerable properties are ignored unless `mode` is "descriptor" or "descriptor-and-value".
+
 Leafs are compared with [SameValueZero](https://tc39.es/ecma262/multipage/abstract-operations.html#sec-samevaluezero).
 
-* TypedArrays containing the _same values in the same sequence_ are equal, except when `CompareOptions.reasons.constructor` is enabled.
-* A box primitive (eg `new Boolean(true)`) equals its primitive (eg `true`), except when `CompareOptions.reasons.constructor` is enabled.
+* TypedArrays containing the _same values in the same sequence_ are equal, except when not ignoring prototypes.
+* A boxed primitive (eg `new Boolean(true)`) never equals an actual primitive (eg `true`).
 * `NaN` equals `NaN` (for performance and sanity).
 * Zero (`0`, `-0`, `+0`) equals zero (for now? possibly an option in `CompareOptions` in future).
 
@@ -259,7 +275,7 @@ Custom types are handled by HostTypes (to avoid custom comparison).
 
 ### Examples
 
-#### Fast mode: equal
+#### Non-iterated: equal
 
 ```js
 compare('a', 'a');
@@ -267,7 +283,7 @@ compare('a', 'a');
 undefined
 ```
 
-#### Fast mode: unequal
+#### Non-iterated: unequal
 
 ```js
 compare('a', 'b');
@@ -275,9 +291,9 @@ compare('a', 'b');
 true
 ```
 
-#### Full mode: unequal
+#### Iterated: unequal
 ```js
-compare('a', 'b', { mode: 'full' });
+compare('a', 'b', { iterate: 'full' });
 
 Iterator => IterableIterator(1) {
   {
@@ -289,7 +305,7 @@ Iterator => IterableIterator(1) {
 }
 ```
 
-#### Fast mode: object descriptor vs literal
+#### Non-iterated: object descriptor vs literal
 
 ```js
 compare(
@@ -329,10 +345,93 @@ compare(
 true
 ```
 
-#### Full mode: type unequal
+#### Iterated: object descriptor vs literal
 
 ```js
-compare('1', 1, { mode: 'full' });
+compare(
+  Object.create({}, { foo: { enumerable: true, value: 'a' } }),
+  { foo: 'a' },
+  { iterate: 'full', mode: 'descriptor-and-value' },
+);
+
+Iterator => IterableIterator(2) {
+  {
+    path: ['a', { special: 'descriptor' }, 'writable'],
+    expected: false,
+    actual: true,
+    disposition: 'normal',
+  },
+  {
+    path: ['a', { special: 'descriptor' }, 'configurable'],
+    expected: false,
+    actual: true,
+    disposition: 'normal',
+  },
+}
+```
+
+```js
+compare(
+  Object.create({}, { foo: { enumerable: true, get: () => 'a' } }),
+  { foo: 'a' },
+  { iterate: 'full', mode: 'descriptor-and-value' },
+);
+
+Iterator => IterableIterator(4) {
+  {
+    path: ['a', { special: 'descriptor' }, 'get'],
+    expected: <function "get">,
+    actual: undefined,
+    disposition: 'missing',
+  },
+  {
+    path: ['a', { special: 'descriptor' }, 'configurable'],
+    expected: false,
+    actual: true,
+    disposition: 'normal',
+  },
+  {
+    path: ['a', { special: 'descriptor' }, 'value'],
+    expected: undefined,
+    actual: 'a',
+    disposition: 'extra',
+  },
+  {
+    path: ['a', { special: 'descriptor' }, 'writable'],
+    expected: undefined,
+    actual: true,
+    disposition: 'extra',
+  },
+}
+```
+
+```js
+compare(
+  Object.create({}, { foo: { enumerable: false, configurable: false, get: () => 'a' } }),
+  Object.create({}, { foo: { enumerable: false, configurable: true, get: () => 'b' } }),
+  { iterate: 'full', mode: 'descriptor-and-value' },
+);
+
+Iterator => IterableIterator(2) {
+  {
+    path: ['a', { special: 'descriptor' }, 'configurable'],
+    expected: false,
+    actual: true,
+    disposition: 'normal',
+  },
+  {
+    path: ['a'],
+    expected: 'a',
+    actual: 'b',
+    disposition: 'normal',
+  },
+}
+```
+
+#### Iterated: type unequal
+
+```js
+compare('1', 1, { iterate: 'full' });
 
 Iterator => IterableIterator(1) {
   {
@@ -344,13 +443,13 @@ Iterator => IterableIterator(1) {
 }
 ```
 
-#### Full mode: non-enumerable value
+#### Iterated: non-enumerable value
 
 ```js
 compare(
   Object.create({}, { foo: { enumerable: false, value: 'a' } }),
   { foo: 'a' },
-  { mode: 'full' },
+  { iterate: 'full' },
 );
 
 Iterator => IterableIterator(1) {
@@ -363,15 +462,13 @@ Iterator => IterableIterator(1) {
 }
 ```
 
-#### Full mode: non-enumerable getter
+#### Iterated: non-enumerable getter
 
 ```js
 compare(
   Object.create({}, { foo: { get: () => 'a' } }),
   { foo: 'a' },
-  {
-    mode: 'first',
-  },
+  { iterate: 'full' },
 );
 
 Iterator => IterableIterator(1) {
@@ -384,15 +481,13 @@ Iterator => IterableIterator(1) {
 }
 ```
 
-#### Full mode: multiple leafs unequal
+#### Iterated: multiple leafs unequal
 
 ```js
 compare(
   { foo: 'a', bar: 'c' },
   { foo: 'b', bar:  2  },
-  {
-    mode: 'full',
-  },
+  { iterate: 'full' },
 );
 
 Iterator => IterableIterator(2) {
@@ -411,13 +506,13 @@ Iterator => IterableIterator(2) {
 }
 ```
 
-#### Full mode: multiple leafs unequal and missing
+#### Iterated: multiple leafs unequal and missing
 
 ```js
 compare(
   { foo: { bar: 'a'           } },
   { foo: { bar: 'b', qux: 'c' } },
-  { mode: 'full' },
+  { iterate: 'full' },
 );
 
 Iterator => IterableIterator(2) {
@@ -436,15 +531,12 @@ Iterator => IterableIterator(2) {
 }
 ```
 
-#### Full mode: multiple leafs unequal and prototype
+#### Iterated: multiple leafs unequal and prototype
 ```js
 compare(
   { foo: 'a', __proto__: null },
   { foo: 'b' },
-  {
-    mode: 'full',
-    reasons: { prototype: true },
-  },
+  { iterate: 'full' },
 );
 
 Iterator => IterableIterator(2) {
@@ -463,14 +555,12 @@ Iterator => IterableIterator(2) {
 }
 ```
 
-#### Full mode: multiple array items unequal and missing
+#### Iterated: multiple array items unequal and missing
 ```js
 compare(
   ['a', 'b', 'c'     ],
   ['a', 'b', 'd', 'e'],
-  {
-    mode: 'full',
-  },
+  { iterate: 'full' },
 );
 
 Iterator => IterableIterator(2) {
