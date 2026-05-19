@@ -159,7 +159,7 @@ function compare(
   expected: any,
   actual: any,
   options: CompareOptions,
-): (true | Iterator<Deviation>) | undefined;
+): (true | IterableIterator<Deviation>) | undefined;
 ```
 
 ### CompareOptions
@@ -168,7 +168,7 @@ function compare(
 type CompareOptions = {
   iterate?:
     | 'none' // (default) return => boolean
-    | 'full' // return => Iterator<Deviation>
+    | 'full' // return => IterableIterator<Deviation>
   ,
   mode?:
     | 'value'                // (default) limit to the values of enumerable properties
@@ -225,12 +225,12 @@ CompareOptions might also be extended to support more esoteric or particularly c
 ### Deviations
 
 ```ts
-type Deviations = IterableIterator<{
+type Deviation = {
   path: Array<string | symbol | { special: "descriptor" | "prototype" }>,
   actual: unknown,
   expected: unknown,
   disposition: "extra" | "missing" | "normal",
-}>;
+};
 ```
 
 <dl>
