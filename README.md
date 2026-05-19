@@ -226,7 +226,7 @@ CompareOptions might also be extended to support more esoteric or particularly c
 
 ```ts
 type Deviation = {
-  path: Array<string | symbol | { special: "descriptor" | "prototype" }>,
+  path: Array<string | symbol | { special: "descriptor" | "prototype" | "value" }>,
   actual: unknown,
   expected: unknown,
   kind: "extra" | "missing" | "mismatch",
@@ -239,7 +239,8 @@ type Deviation = {
     An array of segments necessary to reach the <code>actual</code> and <code>expected</code> nodes from their respective root.
     The path for a root itself is an empty array.
     The path to a property descriptor extends the path of its property by a <code>{ special: "descriptor" }</code> object,
-    and the path to a [[Prototype]] extends the path of its node by a <code>{ special: "prototype" }</code> object (both distinct from any property key).
+    the path to a [[Prototype]] extends the path of its node by a <code>{ special: "prototype" }</code> object,
+    and the path to a value returned from a manual getter invocation extends the path of the containing property by a <code>{ special: "value" }</code> object (all distinct from any property key).
   </dd>
 
   <dt><em>actual</em></dt>
