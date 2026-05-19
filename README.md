@@ -175,8 +175,7 @@ type CompareOptions = {
     | 'descriptor'           // descend from an object to all of its property
                              // descriptors rather than its enumerable property values
     | 'descriptor-and-value' // like 'descriptor', but also invoke each getter into a value
-                             // associated with the node's path (i.e., as a sibling to the
-                             // descriptor path)
+                             // with a path distinct from that of the descriptor
   ,
   prototypes?:
     | 'same-value' // (default) compare the [[Prototype]]s of non-primitive values by SameValue
