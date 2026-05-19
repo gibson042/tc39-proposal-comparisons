@@ -168,7 +168,7 @@ function compare(
 type CompareOptions = {
   iterate?:
     | 'none' // (default) return => boolean
-    | 'full' // return => IterableIterator<Deviation>
+    | 'deviations' // return => IterableIterator<Deviation>
   ,
   mode?:
     | 'value'                // (default) limit to the values of enumerable properties
@@ -189,7 +189,7 @@ type CompareOptions = {
   <dd>What the function returns<dl>
     <dt>"none"</dt>
     <dd>Return <code>true</code> when there is at least one deviation; <code>undefined</code> otherwise.</dd>
-    <dt>"full"</dt>
+    <dt>"deviations"</dt>
     <dd>Return an iterable iterator of Deviations when there is at least one deviation; <code>undefined</code> otherwise.</dd>
   </dl></dd>
 
@@ -292,7 +292,7 @@ true
 
 #### Iterated: unequal
 ```js
-compare('a', 'b', { iterate: 'full' });
+compare('a', 'b', { iterate: 'deviations' });
 
 Iterator => IterableIterator(1) {
   {
@@ -350,7 +350,7 @@ true
 compare(
   Object.create({}, { foo: { enumerable: true, value: 'a' } }),
   { foo: 'a' },
-  { iterate: 'full', mode: 'descriptor-and-value' },
+  { iterate: 'deviations', mode: 'descriptor-and-value' },
 );
 
 Iterator => IterableIterator(2) {
@@ -373,7 +373,7 @@ Iterator => IterableIterator(2) {
 compare(
   Object.create({}, { foo: { enumerable: true, get: () => 'a' } }),
   { foo: 'a' },
-  { iterate: 'full', mode: 'descriptor-and-value' },
+  { iterate: 'deviations', mode: 'descriptor-and-value' },
 );
 
 Iterator => IterableIterator(4) {
@@ -408,7 +408,7 @@ Iterator => IterableIterator(4) {
 compare(
   Object.create({}, { foo: { enumerable: false, configurable: false, get: () => 'a' } }),
   Object.create({}, { foo: { enumerable: false, configurable: true, get: () => 'b' } }),
-  { iterate: 'full', mode: 'descriptor-and-value' },
+  { iterate: 'deviations', mode: 'descriptor-and-value' },
 );
 
 Iterator => IterableIterator(2) {
@@ -430,7 +430,7 @@ Iterator => IterableIterator(2) {
 #### Iterated: type unequal
 
 ```js
-compare('1', 1, { iterate: 'full' });
+compare('1', 1, { iterate: 'deviations' });
 
 Iterator => IterableIterator(1) {
   {
@@ -448,7 +448,7 @@ Iterator => IterableIterator(1) {
 compare(
   Object.create({}, { foo: { enumerable: false, value: 'a' } }),
   { foo: 'a' },
-  { iterate: 'full' },
+  { iterate: 'deviations' },
 );
 
 Iterator => IterableIterator(1) {
@@ -467,7 +467,7 @@ Iterator => IterableIterator(1) {
 compare(
   Object.create({}, { foo: { get: () => 'a' } }),
   { foo: 'a' },
-  { iterate: 'full' },
+  { iterate: 'deviations' },
 );
 
 Iterator => IterableIterator(1) {
@@ -486,7 +486,7 @@ Iterator => IterableIterator(1) {
 compare(
   { foo: 'a', bar: 'c' },
   { foo: 'b', bar:  2  },
-  { iterate: 'full' },
+  { iterate: 'deviations' },
 );
 
 Iterator => IterableIterator(2) {
@@ -511,7 +511,7 @@ Iterator => IterableIterator(2) {
 compare(
   { foo: { bar: 'a'           } },
   { foo: { bar: 'b', qux: 'c' } },
-  { iterate: 'full' },
+  { iterate: 'deviations' },
 );
 
 Iterator => IterableIterator(2) {
@@ -535,7 +535,7 @@ Iterator => IterableIterator(2) {
 compare(
   { foo: 'a', __proto__: null },
   { foo: 'b' },
-  { iterate: 'full' },
+  { iterate: 'deviations' },
 );
 
 Iterator => IterableIterator(2) {
@@ -559,7 +559,7 @@ Iterator => IterableIterator(2) {
 compare(
   ['a', 'b', 'c'     ],
   ['a', 'b', 'd', 'e'],
-  { iterate: 'full' },
+  { iterate: 'deviations' },
 );
 
 Iterator => IterableIterator(2) {
