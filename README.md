@@ -229,7 +229,7 @@ type Deviation = {
   path: Array<string | symbol | { special: "descriptor" | "prototype" }>,
   actual: unknown,
   expected: unknown,
-  disposition: "extra" | "missing" | "normal",
+  kind: "extra" | "missing" | "mismatch",
 };
 ```
 
@@ -248,13 +248,13 @@ type Deviation = {
   <dt><em>expected</em></dt>
   <dd>The leaf value from the <strong>first</strong> argument.</dd>
 
-  <dt><em>disposition</em></dt>
+  <dt><em>kind</em></dt>
   <dd><dl>
     <dt>"extra"</dt>
     <dd>when the node is present under <code>actual</code> but not <code>expected</code></dd>
     <dt>"missing"</dt>
     <dd>when the node is present under <code>expected</code> but not <code>actual</code></dd>
-    <dt>"normal"</dt>
+    <dt>"mismatch"</dt>
     <dd>when the node is present under both <code>actual</code> and <code>expected</code></dd>
   </dl></dd>
 </dl>
@@ -299,7 +299,7 @@ Iterator => IterableIterator(1) {
     path: [],
     expected: 'a',
     actual: 'b',
-    disposition: 'normal',
+    kind: 'mismatch',
   },
 }
 ```
@@ -358,13 +358,13 @@ Iterator => IterableIterator(2) {
     path: ['a', { special: 'descriptor' }, 'writable'],
     expected: false,
     actual: true,
-    disposition: 'normal',
+    kind: 'mismatch',
   },
   {
     path: ['a', { special: 'descriptor' }, 'configurable'],
     expected: false,
     actual: true,
-    disposition: 'normal',
+    kind: 'mismatch',
   },
 }
 ```
@@ -381,25 +381,25 @@ Iterator => IterableIterator(4) {
     path: ['a', { special: 'descriptor' }, 'get'],
     expected: <function "get">,
     actual: undefined,
-    disposition: 'missing',
+    kind: 'missing',
   },
   {
     path: ['a', { special: 'descriptor' }, 'configurable'],
     expected: false,
     actual: true,
-    disposition: 'normal',
+    kind: 'mismatch',
   },
   {
     path: ['a', { special: 'descriptor' }, 'value'],
     expected: undefined,
     actual: 'a',
-    disposition: 'extra',
+    kind: 'extra',
   },
   {
     path: ['a', { special: 'descriptor' }, 'writable'],
     expected: undefined,
     actual: true,
-    disposition: 'extra',
+    kind: 'extra',
   },
 }
 ```
@@ -416,13 +416,13 @@ Iterator => IterableIterator(2) {
     path: ['a', { special: 'descriptor' }, 'configurable'],
     expected: false,
     actual: true,
-    disposition: 'normal',
+    kind: 'mismatch',
   },
   {
     path: ['a'],
     expected: 'a',
     actual: 'b',
-    disposition: 'normal',
+    kind: 'mismatch',
   },
 }
 ```
@@ -437,7 +437,7 @@ Iterator => IterableIterator(1) {
     path: [],
     expected: '1',
     actual: 1,
-    disposition: 'normal',
+    kind: 'mismatch',
   },
 }
 ```
@@ -456,7 +456,7 @@ Iterator => IterableIterator(1) {
     path: ['foo'],
     expected: undefined,
     actual: 'a',
-    disposition: 'extra',
+    kind: 'extra',
   },
 }
 ```
@@ -475,7 +475,7 @@ Iterator => IterableIterator(1) {
     path: ['foo'],
     expected: undefined,
     actual: 'a',
-    disposition: 'extra',
+    kind: 'extra',
   },
 }
 ```
@@ -494,13 +494,13 @@ Iterator => IterableIterator(2) {
     path: ['foo'],
     expected: 'a',
     actual: 'c',
-    disposition: 'normal',
+    kind: 'mismatch',
   },
   {
     path: ['bar'],
     expected: 'c',
     actual: 2,
-    disposition: 'normal',
+    kind: 'mismatch',
   },
 }
 ```
@@ -519,13 +519,13 @@ Iterator => IterableIterator(2) {
     path: ['foo', 'bar'],
     expected: 'a',
     actual: 'b',
-    disposition: 'normal',
+    kind: 'mismatch',
   },
   {
     path: ['foo', 'qux'],
     expected: undefined,
     actual: 'c',
-    disposition: 'extra',
+    kind: 'extra',
   },
 }
 ```
@@ -543,13 +543,13 @@ Iterator => IterableIterator(2) {
     path: [{ special: 'prototype' }],
     expected: null,
     actual: Object.prototype,
-    disposition: 'normal',
+    kind: 'mismatch',
   },
   {
     path: ['foo'],
     expected: 'a',
     actual: 'b',
-    disposition: 'normal',
+    kind: 'mismatch',
   },
 }
 ```
@@ -567,13 +567,13 @@ Iterator => IterableIterator(2) {
     path: ['2'],
     expected: 'c',
     actual: 'd',
-    disposition: 'normal',
+    kind: 'mismatch',
   },
   {
     path: ['3'],
     expected: undefined,
     actual: 'e',
-    disposition: 'extra',
+    kind: 'extra',
   },
 }
 ```
