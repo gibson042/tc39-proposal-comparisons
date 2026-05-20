@@ -267,7 +267,7 @@ Non-enumerable properties are ignored unless `mode` is "descriptor" or "descript
 Leafs are compared with [SameValueZero](https://tc39.es/ecma262/multipage/abstract-operations.html#sec-samevaluezero).
 
 * TypedArrays containing the _same values in the same sequence_ are equal, except when not ignoring prototypes.
-* A boxed primitive (eg `new Boolean(true)`) never equals an actual primitive (eg `true`).
+* A primitive is not equal to a "boxed object" wrapping it (e.g., `true` vs. `new Boolean(true)`).
 * `NaN` equals `NaN` (for performance and sanity).
 * Zero (`0`, `-0`, `+0`) equals zero (for now? possibly an option in `CompareOptions` in future).
 
